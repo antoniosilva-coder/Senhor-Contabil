@@ -9,16 +9,13 @@ try {
 
     Write-Host ""
     Write-Host "===============================================" -ForegroundColor Cyan
-    Write-Host "      Senhor Contábil - Instalação Finalizada" -ForegroundColor Green
+    Write-Host "      Senhor Contábil - Processamento Finalizado" -ForegroundColor Green
     Write-Host "===============================================" -ForegroundColor Cyan
     Write-Host ""
 
-    Write-Host "Etapas concluídas:" -ForegroundColor Yellow
-    Write-Host "  ✓ Plano de Energia"
-    Write-Host "  ✓ Ninite"
-    Write-Host "  ✓ Windows Update"
-    Write-Host "  ✓ RustDesk"
-    Write-Host "  ✓ .NET Framework 3.5"
+    Write-Host "As etapas foram processadas pelo orquestrador." -ForegroundColor Yellow
+    Write-Host "Consulte o resumo no terminal e em:"
+    Write-Host "  C:\ProgramData\SenhorContabil\status.log"
     Write-Host ""
 
     # Limpa temporários utilizados pelos scripts

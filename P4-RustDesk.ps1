@@ -35,7 +35,7 @@ try {
         -OutFile $Destino `
         -Headers $headers
 
-    # Remove marca de "arquivo da internet" (Zone.Identifier) — em algumas
+    # Remove marca de "arquivo da internet" (Zone.Identifier) - em algumas
     # configurações isso evita que o SmartScreen tente exibir um prompt
     # (que trava o -Wait numa sessão sem desktop interativo).
     Unblock-File -Path $Destino -ErrorAction SilentlyContinue
@@ -65,7 +65,7 @@ try {
     $finished = $proc.WaitForExit($TimeoutSeconds * 1000)
 
     if (-not $finished) {
-        Write-Host "RustDesk não terminou em $TimeoutSeconds s — encerrando o processo e seguindo em frente." -ForegroundColor Yellow
+        Write-Host "RustDesk não terminou em $TimeoutSeconds s - encerrando o processo e seguindo em frente." -ForegroundColor Yellow
         Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
         throw "Instalação do RustDesk excedeu o tempo limite de $TimeoutSeconds s (processo travado, possivelmente aguardando um prompt de UAC/SmartScreen que não pode ser exibido)."
     }

@@ -22,7 +22,8 @@ foreach ($name in @(
     'PauseQualityUpdatesEndTime',
     'PauseUpdatesExpiryTime'
 )) {
-    Set-ItemProperty -Path $regPath -Name $name -Value $now.AddHours(1).ToString($format)
+    $pauseEnd = ($now.AddHours(1)).ToString($format)
+    Set-ItemProperty -Path $regPath -Name $name -Value $pauseEnd
 }
 
 Write-Host "Windows Update pausado por 1 hora."
