@@ -20,6 +20,25 @@ function Get-InstalledRustDesk {
     return $null
 }
 
+function Stop-RustDeskInterface {
+    $currentSessionId = (Get-Process -Id $PID).SessionId
+    $rustDeskProcesses = @(
+        Get-Process -Name "rustdesk" -ErrorAction SilentlyContinue |
+            Where-Object { $_.SessionId -eq $currentSessionId }
+    )
+
+    foreach ($rustDeskProcess in $rustDeskProcesses) {
+        Stop-Process `
+            -Id $rustDeskProcess.Id `
+            -Force `
+            -ErrorAction SilentlyContinue
+    }
+
+    if ($rustDeskProcesses.Count -gt 0) {
+        Write-Host "Interface do RustDesk encerrada para continuar a instalacao."
+    }
+}
+
 try {
     Write-Host "== Verificando RustDesk =="
 
@@ -43,6 +62,7 @@ try {
             Write-Host "RustDesk ja esta instalado ou em execucao. Etapa ignorada." -ForegroundColor Green
         }
 
+        Stop-RustDeskInterface
         exit 0
     }
 
@@ -122,6 +142,9 @@ try {
     if ($process.ExitCode -notin $validExitCodes) {
         throw "O instalador MSI retornou o codigo $($process.ExitCode). Log: $installLog"
     }
+
+    Start-Sleep -Seconds 2
+    Stop-RustDeskInterface
 
     Write-Host "RustDesk instalado com sucesso." -ForegroundColor Green
 }
