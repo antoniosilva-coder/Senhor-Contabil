@@ -1,83 +1,135 @@
-$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = "Stop"
+$ProgressPreference = "SilentlyContinue"
 
-try {
-    Write-Host "== Instalando RustDesk =="
+function Get-InstalledRustDesk {
+    $uninstallPaths = @(
+        "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
+        "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
+    )
 
-    # Garante TLS 1.2
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    foreach ($path in $uninstallPaths) {
+        $app = Get-ItemProperty -Path $path -ErrorAction SilentlyContinue |
+            Where-Object { $_.DisplayName -like "RustDesk*" } |
+            Select-Object -First 1
 
-    $headers = @{
-        'User-Agent' = 'PowerShell'
+        if ($null -ne $app) {
+            return $app
+        }
     }
 
-    Write-Host "Consultando última versão..."
+    return $null
+}
+
+try {
+    Write-Host "== Verificando RustDesk =="
+
+    $installedApp = Get-InstalledRustDesk
+    $runningProcess = Get-Process -Name "rustdesk" -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+
+    $installedExe = Join-Path $env:ProgramFiles "RustDesk\rustdesk.exe"
+
+    if (
+        ($null -ne $installedApp) -or
+        ($null -ne $runningProcess) -or
+        (Test-Path -LiteralPath $installedExe -PathType Leaf)
+    ) {
+        $installedVersion = $installedApp.DisplayVersion
+
+        if ($installedVersion) {
+            Write-Host "RustDesk ja esta instalado (versao $installedVersion). Etapa ignorada." -ForegroundColor Green
+        }
+        else {
+            Write-Host "RustDesk ja esta instalado ou em execucao. Etapa ignorada." -ForegroundColor Green
+        }
+
+        exit 0
+    }
+
+    Write-Host "== Instalando RustDesk =="
+
+    [Net.ServicePointManager]::SecurityProtocol = (
+        [Net.ServicePointManager]::SecurityProtocol -bor
+        [Net.SecurityProtocolType]::Tls12
+    )
+
+    $headers = @{
+        "User-Agent" = "SenhorContabil-PowerShell"
+        "Accept" = "application/vnd.github+json"
+    }
+
+    Write-Host "Consultando a versao mais recente..."
 
     $release = Invoke-RestMethod `
         -Uri "https://api.github.com/repos/rustdesk/rustdesk/releases/latest" `
-        -Headers $headers
+        -Headers $headers `
+        -TimeoutSec 30 `
+        -ErrorAction Stop
 
     $asset = $release.assets |
-        Where-Object {
-            $_.name -match '^rustdesk-.*-x86_64\.exe$'
-        } |
+        Where-Object { $_.name -match "^rustdesk-.*-x86_64\.msi$" } |
         Select-Object -First 1
 
-    if (-not $asset) {
-        throw "Instalador x64 não encontrado."
+    if ($null -eq $asset) {
+        throw "O pacote MSI x64 do RustDesk nao foi encontrado na versao mais recente."
     }
 
-    $Destino = Join-Path $env:TEMP "RustDesk.exe"
+    $installerPath = Join-Path $env:TEMP "RustDesk-x64.msi"
+    $installLog = "C:\ProgramData\SenhorContabil\RustDesk-install.log"
+
+    Remove-Item -LiteralPath $installerPath -Force -ErrorAction SilentlyContinue
 
     Write-Host "Baixando $($asset.name)..."
 
     Invoke-WebRequest `
         -Uri $asset.browser_download_url `
-        -OutFile $Destino `
-        -Headers $headers
+        -OutFile $installerPath `
+        -Headers $headers `
+        -UseBasicParsing `
+        -TimeoutSec 300 `
+        -ErrorAction Stop
 
-    # Remove marca de "arquivo da internet" (Zone.Identifier) - em algumas
-    # configurações isso evita que o SmartScreen tente exibir um prompt
-    # (que trava o -Wait numa sessão sem desktop interativo).
-    Unblock-File -Path $Destino -ErrorAction SilentlyContinue
-
-    # Exclui o instalador do Defender ANTES de rodar. O P7-Defender.ps1 só roda
-    # depois do P4 na ordem do P0-Main, então sem isso o Defender pode
-    # escanear/segurar o instalador durante a instalação silenciosa.
-    try {
-        Add-MpPreference -ExclusionPath $Destino -ErrorAction Stop
-        Add-MpPreference -ExclusionProcess $Destino -ErrorAction Stop
-    }
-    catch {
-        Write-Host "Aviso: não foi possível adicionar exclusão no Defender ($($_.Exception.Message)). Prosseguindo mesmo assim."
+    if (-not (Test-Path -LiteralPath $installerPath -PathType Leaf)) {
+        throw "O download terminou, mas o instalador nao foi criado."
     }
 
-    Write-Host "Instalando RustDesk..."
+    if ((Get-Item -LiteralPath $installerPath).Length -le 0) {
+        throw "O instalador do RustDesk foi baixado vazio."
+    }
 
-    # Start-Process com -Wait puro pode travar indefinidamente se o instalador
-    # disparar um prompt (UAC/SmartScreen) numa sessão sem desktop interativo.
-    # Usamos -PassThru + timeout manual para nunca ficar preso pra sempre.
-    $proc = Start-Process `
-        -FilePath $Destino `
-        -ArgumentList "--silent-install" `
+    Unblock-File -LiteralPath $installerPath -ErrorAction SilentlyContinue
+
+    Write-Host "Instalando RustDesk silenciosamente..."
+
+    $msiArguments = "/i `"$installerPath`" /qn /norestart CREATEDESKTOPSHORTCUTS=`"N`" CREATESTARTMENUSHORTCUTS=`"Y`" INSTALLPRINTER=`"N`" /l*v `"$installLog`""
+
+    $process = Start-Process `
+        -FilePath "$env:SystemRoot\System32\msiexec.exe" `
+        -ArgumentList $msiArguments `
         -PassThru
 
-    $TimeoutSeconds = 120
-    $finished = $proc.WaitForExit($TimeoutSeconds * 1000)
+    $timeoutSeconds = 300
+    $finished = $process.WaitForExit($timeoutSeconds * 1000)
 
     if (-not $finished) {
-        Write-Host "RustDesk não terminou em $TimeoutSeconds s - encerrando o processo e seguindo em frente." -ForegroundColor Yellow
-        Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-        throw "Instalação do RustDesk excedeu o tempo limite de $TimeoutSeconds s (processo travado, possivelmente aguardando um prompt de UAC/SmartScreen que não pode ser exibido)."
+        Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+        throw "A instalacao do RustDesk excedeu $timeoutSeconds segundos e foi interrompida. Log: $installLog"
     }
 
-    if ($proc.ExitCode -ne 0) {
-        throw "Instalador do RustDesk retornou código de saída $($proc.ExitCode)."
+    $process.Refresh()
+    $validExitCodes = @(0, 1641, 3010)
+
+    if ($process.ExitCode -notin $validExitCodes) {
+        throw "O instalador MSI retornou o codigo $($process.ExitCode). Log: $installLog"
     }
 
-    Remove-Item $Destino -Force -ErrorAction SilentlyContinue
-
-    Write-Host "RustDesk instalado com sucesso."
+    Write-Host "RustDesk instalado com sucesso." -ForegroundColor Green
 }
 catch {
-    Write-Error $_
+    Write-Error $_.Exception.Message
+}
+finally {
+    if ($installerPath) {
+        Remove-Item -LiteralPath $installerPath -Force -ErrorAction SilentlyContinue
+    }
 }

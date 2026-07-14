@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
-Write-Host "== Baixando Ninite =="
+Write-Host "== Preparando Ninite =="
 
 $RepoOwner = if ($env:SENHOR_CONTABIL_REPO_OWNER) {
     $env:SENHOR_CONTABIL_REPO_OWNER
@@ -24,8 +24,29 @@ else {
     "main"
 }
 
+$WorkDir = "C:\ProgramData\SenhorContabil"
+$NiniteDir = Join-Path $WorkDir "ninite"
+$NiniteTemp = Join-Path $NiniteDir "temp"
+$NiniteExe = Join-Path $NiniteDir "Ninite-SenhorContabil.exe"
 $NiniteUrl = "https://raw.githubusercontent.com/$RepoOwner/$RepoName/$RepositoryRef/Ninite-SenhorContabil.exe"
-$NiniteExe = Join-Path $env:TEMP "Ninite-SenhorContabil.exe"
+
+New-Item -ItemType Directory -Path $NiniteDir -Force | Out-Null
+New-Item -ItemType Directory -Path $NiniteTemp -Force | Out-Null
+
+$currentUser = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+$permission = "${currentUser}:(OI)(CI)M"
+
+& "$env:SystemRoot\System32\icacls.exe" `
+    $NiniteDir `
+    "/grant:r" `
+    $permission `
+    "/T" `
+    "/C" `
+    "/Q" | Out-Null
+
+if ($LASTEXITCODE -ne 0) {
+    throw "Nao foi possivel preparar as permissoes da pasta '$NiniteDir'."
+}
 
 [Net.ServicePointManager]::SecurityProtocol = (
     [Net.ServicePointManager]::SecurityProtocol -bor
@@ -34,6 +55,8 @@ $NiniteExe = Join-Path $env:TEMP "Ninite-SenhorContabil.exe"
 
 try {
     Remove-Item -LiteralPath $NiniteExe -Force -ErrorAction SilentlyContinue
+
+    Write-Host "Baixando o Ninite para $NiniteDir..."
 
     Invoke-WebRequest `
         -Uri $NiniteUrl `
@@ -56,15 +79,29 @@ if ((Get-Item -LiteralPath $NiniteExe).Length -le 0) {
 
 Unblock-File -LiteralPath $NiniteExe -ErrorAction SilentlyContinue
 
-Write-Host "== Instalando programas =="
+$originalTemp = $env:TEMP
+$originalTmp = $env:TMP
 
-$process = Start-Process `
-    -FilePath $NiniteExe `
-    -PassThru `
-    -Wait
+try {
+    $env:TEMP = $NiniteTemp
+    $env:TMP = $NiniteTemp
 
-if ($process.ExitCode -ne 0) {
-    throw "O Ninite retornou o codigo $($process.ExitCode)."
+    Write-Host "== Instalando programas =="
+    Write-Host "Temporarios do Ninite: $NiniteTemp"
+
+    $process = Start-Process `
+        -FilePath $NiniteExe `
+        -WorkingDirectory $NiniteDir `
+        -PassThru `
+        -Wait
+
+    if ($process.ExitCode -ne 0) {
+        throw "O Ninite retornou o codigo $($process.ExitCode)."
+    }
+}
+finally {
+    $env:TEMP = $originalTemp
+    $env:TMP = $originalTmp
 }
 
 Write-Host "Ninite finalizado."
