@@ -29,7 +29,7 @@ call :Instalar "RustDesk" rustdesk.install
 call :Instalar "WinRAR" winrar
 call :Instalar "Google Chrome" googlechrome
 call :Instalar "KeePass 2" keepass
-call :Instalar "Google Drive" googledrive
+call :InstalarGoogleDrive
 call :Instalar ".NET 10 SDK" dotnet-10.0-sdk
 call :Instalar "Amazon Corretto 8 JRE" corretto8jre
 call :Instalar "Notepad++" notepadplusplus
@@ -56,14 +56,49 @@ echo [INSTALANDO] %~1
 echo [%date% %time%] Instalando: %~1>> "%LOG%"
 
 "%CHOCO%" install %~2 -y --accept-license
+set "CHOCO_EXIT=%ERRORLEVEL%"
 
-if errorlevel 1 (
-    echo [ERRO] Falha ao instalar: %~1
-    echo [%date% %time%] ERRO: %~1>> "%LOG%"
+if not "%CHOCO_EXIT%"=="0" (
+    echo [ERRO] Falha ao instalar: %~1 ^(codigo %CHOCO_EXIT%^)
+    echo [%date% %time%] ERRO: %~1 - codigo %CHOCO_EXIT%>> "%LOG%"
     set /a FALHAS+=1
 ) else (
     echo [OK] Instalado com sucesso: %~1
     echo [%date% %time%] OK: %~1>> "%LOG%"
+)
+
+exit /b
+
+:InstalarGoogleDrive
+echo.
+echo [INSTALANDO] Google Drive
+echo [%date% %time%] Instalando: Google Drive>> "%LOG%"
+
+set "GDRIVE=%TEMP%\GoogleDriveSetup.exe"
+
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; Invoke-WebRequest -UseBasicParsing -Uri 'https://dl.google.com/drive-file-stream/GoogleDriveSetup.exe' -OutFile '%GDRIVE%'; $sig=Get-AuthenticodeSignature '%GDRIVE%'; if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'Google LLC') { throw 'Assinatura digital do Google Drive invalida' }"
+set "GDRIVE_DOWNLOAD_EXIT=%ERRORLEVEL%"
+
+if not "%GDRIVE_DOWNLOAD_EXIT%"=="0" (
+    echo [ERRO] Falha ao baixar ou validar o Google Drive ^(codigo %GDRIVE_DOWNLOAD_EXIT%^)
+    echo [%date% %time%] ERRO: Google Drive - download ou assinatura invalida - codigo %GDRIVE_DOWNLOAD_EXIT%>> "%LOG%"
+    if exist "%GDRIVE%" del /q "%GDRIVE%" >nul 2>&1
+    set /a FALHAS+=1
+    exit /b
+)
+
+start "" /wait "%GDRIVE%" --silent --desktop_shortcut --skip_launch_new
+set "GDRIVE_INSTALL_EXIT=%ERRORLEVEL%"
+
+if exist "%GDRIVE%" del /q "%GDRIVE%" >nul 2>&1
+
+if not "%GDRIVE_INSTALL_EXIT%"=="0" if not "%GDRIVE_INSTALL_EXIT%"=="3010" (
+    echo [ERRO] Falha ao instalar: Google Drive ^(codigo %GDRIVE_INSTALL_EXIT%^)
+    echo [%date% %time%] ERRO: Google Drive - codigo %GDRIVE_INSTALL_EXIT%>> "%LOG%"
+    set /a FALHAS+=1
+) else (
+    echo [OK] Instalado com sucesso: Google Drive
+    echo [%date% %time%] OK: Google Drive>> "%LOG%"
 )
 
 exit /b
